@@ -26,10 +26,12 @@ type client_tls_config =
 [@@deriving sexp]
 (** Configuration fragment for a TLS client connecting to a remote endpoint *)
 
+type ic = (Lwt_io.input_channel[@sexp.opaque]) [@@deriving sexp]
+type oc = (Lwt_io.output_channel[@sexp.opaque]) [@@deriving sexp]
+
 type client =
   [ `TLS of client_tls_config
-  | `TLS_tunnel of
-    [ `Hostname of string ] * Lwt_io.input_channel * Lwt_io.output_channel
+  | `TLS_tunnel of [ `Hostname of string ] * ic * oc
   | `TLS_native of client_tls_config
     (** Force use of native OCaml TLS stack to connect.*)
   | `OpenSSL of client_tls_config
@@ -106,8 +108,6 @@ type server =
       documentation for more. *)
 
 type 'a io = 'a Lwt.t
-type ic = (Lwt_io.input_channel[@sexp.opaque]) [@@deriving sexp]
-type oc = (Lwt_io.output_channel[@sexp.opaque]) [@@deriving sexp]
 
 type tcp_flow = private {
   fd : Lwt_unix.file_descr; [@sexp.opaque]
@@ -131,7 +131,7 @@ type vchan_flow = private { domid : int; port : string } [@@deriving sexp_of]
     transport method. *)
 type flow = private
   | TCP of tcp_flow
-  | Tunnel
+  | Tunnel of string * ic * oc
   | Domain_socket of domain_flow
   | Vchan of vchan_flow
 [@@deriving sexp_of]
@@ -207,11 +207,13 @@ val set_max_active : int -> unit
     accepted. When the limit is hit accept blocks until another server
     connection is closed. *)
 
-val endp_of_flow : flow -> Conduit.endp
-(** [endp_of_flow flow] retrieves the original {!Conduit.endp} from the
-    established [flow] *)
+type endp = [ Conduit.endp | `TLS_tunnel of string * ic * oc ] [@@deriving sexp]
 
-val endp_to_client : ctx:ctx -> Conduit.endp -> client io
+val endp_of_flow : flow -> endp
+(** [endp_of_flow flow] retrieves the original {!endp} from the established
+    [flow] *)
+
+val endp_to_client : ctx:ctx -> [< endp ] -> client io
 (** [endp_to_client ~ctx endp] converts an [endp] into a a concrete connection
     mechanism of type [client] *)
 
